@@ -136,12 +136,12 @@ def echo_sample(
         select_fx = gather_nd_reshape(fx, inds).view(batch_size, d_max)
 
         if len(sx.shape) > 2:
-            select_sx = select_sx.unsqueeze(2).unsqueeze(2)
-            sx = sx.unsqueeze(1).unsqueeze(1)
+            select_sx = select_sx.view(batch_size, d_max, *sx.shape[1:])
+            sx = sx.unsqueeze(1)
 
         if len(fx.shape) > 2:
-            select_fx = select_fx.unsqueeze(2).unsqueeze(2)
-            fx = fx.unsqueeze(1).unsqueeze(1)
+            select_fx = select_fx.view(batch_size, d_max, *fx.shape[1:])
+            fx = fx.unsqueeze(1)
     else:
         repeat_fx = torch.ones_like(fx.unsqueeze(0)) * torch.ones_like(fx.unsqueeze(1))
         stack_fx = fx * repeat_fx
@@ -171,66 +171,104 @@ def echo_sample(
         sx = sx if not calc_log else torch.exp(sx)
 
     noise_expanded = noise.view(batch_size, -1)
-    noise_expanded = noise_expanded.expand(batch_size, sx.size(1))
+    noise_expanded = noise.view(batch_size, *([1] * (len(sx.shape) - 2)), -1)
 
     if multiplicative:
-        output = torch.exp(
-            fx + torch.matmul(sx, noise_expanded.view(batch_size, -1, 1)).squeeze(-1)
-        )
+        output = torch.exp(fx + sx * noise_expanded)
     else:
-        output = fx + torch.matmul(sx, noise_expanded.view(batch_size, -1, 1)).squeeze(
-            -1
-        )
-
-    return output if not return_noise else noise
+        output = fx + sx * noise_expanded
+        return output if not return_noise else noise
 
 
-def echo_loss(inputs, clip=0.8359, calc_log=True, plus_sx=True, multiplicative=False):
-    if isinstance(inputs, list):
-        z_mean = inputs[0]
-        z_scale = inputs[-1]
-    else:
-        z_scale = inputs
+# def echo_loss(inputs, clip=0.8359, calc_log=True, plus_sx=True, multiplicative=False):
+#    if isinstance(inputs, list):
+#        z_mean = inputs[0]
+#        z_scale = inputs[-1]
+#    else:
+#        z_scale = inputs
+#
+#    clip_tensor = torch.tensor(clip, dtype=z_scale.dtype, device=z_scale.device)
+#
+#    if not calc_log:
+#        z_scale_clipped = clip_tensor * z_scale
+#        z_scale_clipped = torch.where(
+#            torch.abs(z_scale_clipped) < 1e-7,
+#            torch.sign(z_scale_clipped) * 1e-7,
+#            z_scale_clipped,
+#        )
+#        mi = -torch.log(torch.abs(z_scale_clipped) + 1e-7)
+#    else:
+#        if plus_sx:
+#            mi = -(torch.log(clip_tensor) + z_scale)
+#        else:
+#            mi = -(torch.log(clip_tensor) - z_scale)
+#
+#    averaged_loss = calculate_avg_log_det(mi)
+#
+#    return averaged_loss
+#
 
-    clip_tensor = torch.tensor(clip, dtype=z_scale.dtype, device=z_scale.device)
+# def calculate_avg_log_det(sx_matrices, eps=1e-6):
+#    # Add a small diagonal value to ensure positive definiteness
+#    sx_matrices = sx_matrices + eps * torch.eye(
+#        sx_matrices.size(-1), dtype=sx_matrices.dtype, device=sx_matrices.device
+#    )
+#
+#    # Calculate the negative log-determinant for each Sx matrix in the batch
+#    log_det_sx = -torch.logdet(sx_matrices)
+#
+#    # Replace any infinite or nan values with zero
+#    log_det_sx = torch.where(
+#        torch.isinf(log_det_sx) | torch.isnan(log_det_sx),
+#        torch.zeros_like(log_det_sx),
+#        log_det_sx,
+#    )
+#
+#    # Average the negative log-determinants across the batch
+#    avg_log_det_sx = torch.mean(log_det_sx)
+#
+#    return avg_log_det_sx
 
-    if not calc_log:
-        z_scale_clipped = clip_tensor * z_scale
-        z_scale_clipped = torch.where(
-            torch.abs(z_scale_clipped) < 1e-7,
-            torch.sign(z_scale_clipped) * 1e-7,
-            z_scale_clipped,
-        )
-        mi = -torch.log(torch.abs(z_scale_clipped) + 1e-7)
-    else:
-        if plus_sx:
-            mi = -(torch.log(clip_tensor) + z_scale)
-        else:
-            mi = -(torch.log(clip_tensor) - z_scale)
 
+def echo_loss(z_scale, clip_value=1e-7):
+    # Ensure that z_scale has the expected shape [batch_size, 1, dim1, dim2]
+    assert (
+        len(z_scale.shape) == 4 and z_scale.shape[1] == 1
+    ), "z_scale must have shape [batch_size, 1, dim1, dim2]"
 
-    averaged_loss = calculate_avg_log_det(mi)
+    # Clip the diagonal values of S(x) for numerical stability
+    z_scale_clipped = torch.clamp(z_scale, min=clip_value)
 
-    return averaged_loss
+    # Extract the diagonal values from z_scale_clipped
+    diagonal_values = torch.diagonal(z_scale_clipped, dim1=-2, dim2=-1)
 
+    # Calculate the determinant by multiplying the diagonal values
+    det_sx = torch.prod(diagonal_values, dim=-1, keepdim=True)
 
-def calculate_avg_log_det(sx_matrices, eps=1e-6):
-    # Add a small diagonal value to ensure positive definiteness
-    sx_matrices = sx_matrices + eps * torch.eye(
-        sx_matrices.size(-1), dtype=sx_matrices.dtype, device=sx_matrices.device
+    # Take the absolute value of the determinant
+    abs_det_sx = torch.abs(det_sx)
+
+    # Add a small value to the absolute determinant to avoid taking the logarithm of zero
+    abs_det_sx_stable = abs_det_sx + torch.finfo(abs_det_sx.dtype).tiny
+
+    # Calculate the negative logarithm of the absolute determinant
+    neg_log_abs_det_sx = -torch.log(abs_det_sx_stable)
+
+    # Handle potential nan values
+    neg_log_abs_det_sx = torch.where(
+        torch.isnan(neg_log_abs_det_sx),
+        torch.zeros_like(neg_log_abs_det_sx),
+        neg_log_abs_det_sx,
     )
 
-    # Calculate the negative log-determinant for each Sx matrix in the batch
-    log_det_sx = -torch.logdet(sx_matrices)
-
-    # Replace any infinite or nan values with zero
-    log_det_sx = torch.where(
-        torch.isinf(log_det_sx) | torch.isnan(log_det_sx),
-        torch.zeros_like(log_det_sx),
-        log_det_sx,
+    # Handle potential infinite values
+    neg_log_abs_det_sx = torch.where(
+        torch.isinf(neg_log_abs_det_sx),
+        torch.zeros_like(neg_log_abs_det_sx),
+        neg_log_abs_det_sx,
     )
 
-    # Average the negative log-determinants across the batch
-    avg_log_det_sx = torch.mean(log_det_sx)
+    # Average the negative logarithm of the absolute determinant across the batch
+    avg_neg_log_abs_det_sx = torch.mean(neg_log_abs_det_sx)
 
-    return avg_log_det_sx
+    return avg_neg_log_abs_det_sx
