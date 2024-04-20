@@ -3,78 +3,78 @@ import torch
 import torch.nn.functional as F
 
 
-def random_indices(n, d):
-    # Generates a 1D tensor of random integers from 0 to n-1, with total n*d elements.
-    return torch.randint(low=0, high=n, size=(n * d,), dtype=torch.int32)
+# def random_indices(n, d):
+#     # Generates a 1D tensor of random integers from 0 to n-1, with total n*d elements.
+#     return torch.randint(low=0, high=n, size=(n * d,), dtype=torch.int32)
 
 
-def gather_nd_reshape(t, indices):
-    # Get the shape of the input tensor t
-    t_shape = t.shape
+# def gather_nd_reshape(t, indices):
+#     # Get the shape of the input tensor t
+#     t_shape = t.shape
 
-    # Convert the indices tensor to long type
-    indices = indices.long()
+#     # Convert the indices tensor to long type
+#     indices = indices.long()
 
-    # Calculate the flat indices based on the provided indices tensor
-    strides = torch.tensor(
-        [np.prod(t_shape[i + 1 :]) for i in range(len(t_shape) - 1)] + [1]
-    )
-    flat_indices = (indices * strides[-indices.shape[-1] :]).sum(dim=-1)
+#     # Calculate the flat indices based on the provided indices tensor
+#     strides = torch.tensor(
+#         [np.prod(t_shape[i + 1 :]) for i in range(len(t_shape) - 1)] + [1]
+#     )
+#     flat_indices = (indices * strides[-indices.shape[-1] :]).sum(dim=-1)
 
-    # Gather the values from the flattened tensor
-    gathered = t.view(-1)[flat_indices]
+#     # Gather the values from the flattened tensor
+#     gathered = t.view(-1)[flat_indices]
 
-    return gathered
-
-
-def indices_without_replacement(batch_size, d_max=-1, replace=False, pop=True):
-    if d_max < 0:
-        d_max = batch_size + d_max
-
-    inds = torch.empty((0, d_max, 2), dtype=torch.long)
-    for i in range(batch_size):
-        batch_range = torch.arange(batch_size)
-        if pop:
-            batch_range = batch_range[batch_range != i]
-        shuffled_indices = torch.randperm(batch_range.size(0))[:d_max]
-        dmax_range = torch.arange(d_max)
-
-        dmax_enumerated = torch.stack(
-            (dmax_range, batch_range[shuffled_indices]), dim=1
-        )
-        inds = torch.cat((inds, dmax_enumerated.unsqueeze(0)), dim=0)
+#     return gathered
 
 
-def permute_neighbor_indices(batch_size, d_max=-1, replace=False, pop=True):
-    if d_max < 0:
-        d_max = batch_size + d_max
+# def indices_without_replacement(batch_size, d_max=-1, replace=False, pop=True):
+#     if d_max < 0:
+#         d_max = batch_size + d_max
 
-    inds = []
-    for i in range(batch_size):
-        if pop:
-            # Exclude the current sample if pop is True
-            sub_batch = torch.cat((torch.arange(i), torch.arange(i + 1, batch_size)))
-        else:
-            sub_batch = torch.arange(batch_size)
+#     inds = torch.empty((0, d_max, 2), dtype=torch.long)
+#     for i in range(batch_size):
+#         batch_range = torch.arange(batch_size)
+#         if pop:
+#             batch_range = batch_range[batch_range != i]
+#         shuffled_indices = torch.randperm(batch_range.size(0))[:d_max]
+#         dmax_range = torch.arange(d_max)
 
-        if replace:
-            # Select d_max elements with replacement
-            selected_indices = torch.multinomial(
-                torch.ones(sub_batch.shape), num_samples=d_max, replacement=True
-            )
-            selected_indices = sub_batch[selected_indices]
-        else:
-            # Shuffle the sub_batch and select the first d_max elements
-            selected_indices = sub_batch[torch.randperm(sub_batch.shape[0])[:d_max]]
+#         dmax_enumerated = torch.stack(
+#             (dmax_range, batch_range[shuffled_indices]), dim=1
+#         )
+#         inds = torch.cat((inds, dmax_enumerated.unsqueeze(0)), dim=0)
 
-        # Pair each selected index with its position in the batch
-        dmax_range = torch.arange(d_max)
-        dmax_enumerated = torch.stack((dmax_range, selected_indices), dim=1)
-        inds.append(dmax_enumerated)
 
-    # Stack the indices from all batches into a single tensor
-    inds_tensor = torch.stack(inds, dim=0)
-    return inds_tensor
+# def permute_neighbor_indices(batch_size, d_max=-1, replace=False, pop=True):
+#     if d_max < 0:
+#         d_max = batch_size + d_max
+
+#     inds = []
+#     for i in range(batch_size):
+#         if pop:
+#             # Exclude the current sample if pop is True
+#             sub_batch = torch.cat((torch.arange(i), torch.arange(i + 1, batch_size)))
+#         else:
+#             sub_batch = torch.arange(batch_size)
+
+#         if replace:
+#             # Select d_max elements with replacement
+#             selected_indices = torch.multinomial(
+#                 torch.ones(sub_batch.shape), num_samples=d_max, replacement=True
+#             )
+#             selected_indices = sub_batch[selected_indices]
+#         else:
+#             # Shuffle the sub_batch and select the first d_max elements
+#             selected_indices = sub_batch[torch.randperm(sub_batch.shape[0])[:d_max]]
+
+#         # Pair each selected index with its position in the batch
+#         dmax_range = torch.arange(d_max)
+#         dmax_enumerated = torch.stack((dmax_range, selected_indices), dim=1)
+#         inds.append(dmax_enumerated)
+
+#     # Stack the indices from all batches into a single tensor
+#     inds_tensor = torch.stack(inds, dim=0)
+#     return inds_tensor
 
 
 # def echo_sample(
