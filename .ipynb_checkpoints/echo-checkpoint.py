@@ -44,12 +44,29 @@ def echo_sample(inputs):
     #return epsilon
     return epsilon
 
-def echo_loss(S_x):
-    det = torch.linalg.det(S_x.squeeze(1))
-    abs_det = torch.abs(det)
-    log_abs_det = torch.log(abs_det)
-    mi_loss = torch.mean(log_abs_det)
+
+def echo_loss(S):
+    # Define the scaling factor
+    scaling_factor = 10
+
+    # Get the batch size and dimensions of the matrix S
+    batch_size, _, dim, dim = S.shape  # Reusing the variable 'dim' for clarity in dimensions
+
+    # Scale the matrices S by the scaling factor
+    scaled_S = scaling_factor * S
+
+    # Calculate the scaled log determinant
+    _, scaled_log_abs_det = torch.linalg.slogdet(scaled_S)
+
+    # Calculate the mean of scaled log determinants
+    scaled_mi_loss = torch.mean(scaled_log_abs_det)
+
+    # Adjust the scaled mean log determinant by subtracting dim*log(scaling_factor)
+    mi_loss = scaled_mi_loss - (dim * torch.log(torch.tensor(scaling_factor, device=S.device)))
+
+    # Return the calculated mi_loss
     return mi_loss
+
 
 # def create_permutation_matrix(batch_size, exclude_self=True):
 #     """Generates a permutation matrix for batch operations, excluding self-reference."""
