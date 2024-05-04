@@ -56,7 +56,8 @@ def echo_loss(S):
     scaled_S = scaling_factor * S
 
     # Calculate the scaled log determinant
-    _, scaled_log_abs_det = torch.linalg.slogdet(scaled_S)
+    scaled_log_abs_det = torch.log(torch.abs(torch.det(scaled_S)))
+    # _, scaled_log_abs_det = torch.linalg.slogdet(scaled_S)
 
     # Calculate the mean of scaled log determinants
     scaled_mi_loss = torch.mean(scaled_log_abs_det)
