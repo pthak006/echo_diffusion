@@ -49,6 +49,9 @@ def echo_loss(S):
     # Define the scaling factor
     scaling_factor = 10
 
+    # Ensure S is in float32 for high precision computation
+    S = S.to(dtype=torch.float32)
+
     # Get the batch size and dimensions of the matrix S
     batch_size, _, dim, dim = S.shape  # Reusing the variable 'dim' for clarity in dimensions
 
