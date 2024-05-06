@@ -41,7 +41,7 @@ def echo_sample(inputs):
         epsilon[i] = local_epsilon
         S_cumulative[i] = local_S_cumulative
 
-    #return epsilon
+    # return epsilon
     return epsilon
 
 
@@ -53,7 +53,9 @@ def echo_loss(S):
     S = S.to(dtype=torch.float32)
 
     # Get the batch size and dimensions of the matrix S
-    batch_size, _, dim, dim = S.shape  # Reusing the variable 'dim' for clarity in dimensions
+    batch_size, _, dim, dim = (
+        S.shape
+    )  # Reusing the variable 'dim' for clarity in dimensions
 
     # Scale the matrices S by the scaling factor
     scaled_S = scaling_factor * S
@@ -65,7 +67,10 @@ def echo_loss(S):
     scaled_mi_loss = torch.mean(scaled_log_abs_det)
 
     # Adjust the scaled mean log determinant by subtracting dim*log(scaling_factor)
-    mi_loss = scaled_mi_loss - (dim * torch.log(torch.tensor(scaling_factor, device=S.device)))
+    mi_loss = scaled_mi_loss - (
+        dim * torch.log(torch.tensor(scaling_factor, device=S.device))
+    )
+    mi_loss *= -1
 
     # Return the calculated mi_loss
     return mi_loss
