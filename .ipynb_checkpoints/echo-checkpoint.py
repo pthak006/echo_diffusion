@@ -41,35 +41,44 @@ def echo_sample(inputs):
         epsilon[i] = local_epsilon
         S_cumulative[i] = local_S_cumulative
 
-    #return epsilon
+    # return epsilon
     return epsilon
 
 
 def echo_loss(S):
-    # Define the scaling factor
+    # Define the scaling factor and epsilon for regularization
     scaling_factor = 10
+    epsilon = 1e-6
 
     # Ensure S is in float32 for high precision computation
     S = S.to(dtype=torch.float32)
 
     # Get the batch size and dimensions of the matrix S
-    batch_size, _, dim, dim = S.shape  # Reusing the variable 'dim' for clarity in dimensions
+    batch_size, _, dim, dim = S.shape
+
+    # Add epsilon to the diagonal to avoid singular matrices
+    regularization_term = epsilon * torch.eye(dim, device=S.device).unsqueeze(0).unsqueeze(0)
+    S = S + regularization_term
 
     # Scale the matrices S by the scaling factor
     scaled_S = scaling_factor * S
 
-    # Calculate the scaled log determinant
-    _, scaled_log_abs_det = torch.linalg.slogdet(scaled_S)
+    # Perform Singular Value Decomposition
+    U, S_values, V = torch.linalg.svd(scaled_S)
+
+    # Calculate the log determinant using the singular values
+    log_singular_values = torch.log(S_values + epsilon)  # Add epsilon to avoid log(0)
+    scaled_log_abs_det = torch.sum(log_singular_values, dim=-1)
 
     # Calculate the mean of scaled log determinants
     scaled_mi_loss = torch.mean(scaled_log_abs_det)
 
     # Adjust the scaled mean log determinant by subtracting dim*log(scaling_factor)
     mi_loss = scaled_mi_loss - (dim * torch.log(torch.tensor(scaling_factor, device=S.device)))
+    mi_loss *= -1
 
     # Return the calculated mi_loss
     return mi_loss
-
 
 # def create_permutation_matrix(batch_size, exclude_self=True):
 #     """Generates a permutation matrix for batch operations, excluding self-reference."""
